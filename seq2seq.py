@@ -74,7 +74,15 @@ class Seq2SeqModel(object):
             dec_embeddings, dec_seq_lens = self.get_embeddings(decoder_inputs, 'decoder_embed')
             helper = tf_s2s.TrainingHelper(dec_embeddings, dec_seq_lens)
         else:
-            
+            DEC_EMB_SCOPE = 'decoder_embed/sequence_input_layer/sequences_embedding'
+            with tf.variable_scope(DEC_EMB_SCOPE):
+                embedding_weights = tf.get_variable(
+                        'embedding_weights', 
+                        shape=(self.extended_vocab_size, int(self.extended_vocab_size**0.25)))
+            start_tokens = tf.tile([self.vocab_size], [batch_size])
+            end_token = self.vocab_size + 1
+            helper = tf_s2s.GreedyEmbeddingHelper(embedding_weights, start_tokens, end_token)
+            dec_seq_lens = None
         return helper, dec_seq_lens
 
     def decoder(self, enc_outputs, input_seq_lens, final_state, batch_size,
@@ -91,3 +99,9 @@ class Seq2SeqModel(object):
         if is_training:
             return (dec_ouputs.rnn_output, dec_seq_lens)
         return dec_outputs.sample_id
+
+    def calculate_loss(self, logits, dec_seq_lens, decoder_outputs, batch_size):
+        binary_sequences = tf.sequence_mask(dec_seq_lens, tf.float32)
+        batch_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(decoder_outputs, logits)
+        unpadded_loss = batch_loss * binary_sequences
+        return tf.reduce_sum(unpadded_loss) / batch_size
