@@ -59,3 +59,35 @@ class Seq2SeqModel(object):
 
         final_state = tuple(combined_state)
         return enc_outputs, input_seq_lens, final_state
+
+    def decoder_cell(self, enc_outputs, input_seq_lens, is_training):
+        num_decode_units = self.num_lstm_units * 2
+        dec_cell = self.stacked_lstm_cell(is_training, num_decode_units)
+        combined_enc_outputs = tf.conat([enc_outputs[0], enc_outputs[1]], -1)
+        attention_mechanism = tf_s2s.LuongAttention(num_decode_units, combined_enc_outputs, 
+                memory_sequence_length=input_seq_lens)
+        return tf_s2s.AttentionWrapper(dec_cell, attention_mechanism, 
+                attention_layer_size=num_decode_units)
+
+    def decoder_helper(self, decoder_inputs, is_training, batch_size):
+        if is_training:
+            dec_embeddings, dec_seq_lens = self.get_embeddings(decoder_inputs, 'decoder_embed')
+            helper = tf_s2s.TrainingHelper(dec_embeddings, dec_seq_lens)
+        else:
+            
+        return helper, dec_seq_lens
+
+    def decoder(self, enc_outputs, input_seq_lens, final_state, batch_size,
+                decoder_inputs=None, maximum_iterations=None):
+        is_training = decoder_inputs is not None
+        dec_cell = self.decoder_cell(enc_outputs, input_seq_lens, is_training)
+        helper, dec_seq_lens = self.decoder_helper(decoder_inputs, is_training, batch_size)
+        projection_layer = tf.layers.Dense(extended_vocab_size)
+        zero_cell = dec_cell.zero_state(batch_size, tf.float32)
+        initial_state = zero_cell.clone(cell_state=batch_size)
+        decoder = tf_s2s.BasicDecoder(dec_cell, helper, initial_state, 
+                output_layer=projection_layer)
+        dec_outputs = tf_s2s.dynamic_decode(decoder, maximum_iterations)[0]
+        if is_training:
+            return (dec_ouputs.rnn_output, dec_seq_lens)
+        return dec_outputs.sample_id
